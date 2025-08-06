@@ -1,0 +1,23 @@
+name: torch-quan
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=11.8
+  - numpy
+  - scikit-learn
+  - matplotlib
+  - jupyterlab
+  - onnx
+  - onnxruntime
+  - torchserve
+  - torch-model-archiver
+  - tqdm
+  - pillow
+  - py-cpuinfo
