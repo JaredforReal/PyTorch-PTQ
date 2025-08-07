@@ -52,7 +52,8 @@ if __name__ == '__main__':
     trainloader, _ = get_dataloader()
     
     # 训练模型
-    trained_model = train_model(resnet_model, trainloader, num_epochs=10) # 为了演示，只训练10个epoch
+    trained_model = train_model(resnet_model, trainloader, num_epochs=20) # 为了演示，只训练10个epoch
     
     # 保存模型
     save_model(trained_model)
+    

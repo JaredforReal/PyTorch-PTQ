@@ -6,20 +6,17 @@ evaluate.py
 import torch
 from dataloader import get_dataloader
 from utils import timed, load_model
+import torchao.quantization.pt2e as pt2e
 
 def evaluate_model(model, testloader):
     """在测试集上评估模型准确率"""
     device = torch.device("cpu")
-    # 注意：量化模型通常在CPU上运行
+    # 注意：深度学习的量化模型通常在CPU上运行
     model.to(device)
 
     # 安全地设置为评估模式
-    try:
-        model.eval()
-    except AttributeError as e:
-        print(f"Warning: Could not set model to eval mode: {e}")
-        print("Continuing without calling eval()...")
-    
+    pt2e.move_exported_model_to_eval(model)
+
     correct = 0
     total = 0
     with torch.no_grad():

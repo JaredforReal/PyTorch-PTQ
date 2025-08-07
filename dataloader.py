@@ -29,22 +29,6 @@ def get_dataloader(batch_size=128):
     
     return trainloader, testloader
 
-def calibrate_model(model, data_loader, num_batches=10):
-    """
-    校准函数：在校准数据上运行模型以收集统计信息
-    
-    Args:
-        model: 准备好的模型（包含观察器）
-        data_loader: 校准数据加载器
-        num_batches: 用于校准的批次数量
-    """
-    model.eval()
-    with torch.no_grad():
-        for batch_idx, (data, _) in enumerate(data_loader):
-            model(data)
-            if batch_idx >= num_batches - 1:
-                break
-
 def create_calibration_loader(dataset, batch_size=32, num_samples=1000):
     """
     创建校准数据加载器

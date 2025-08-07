@@ -58,8 +58,10 @@ class ResNet(nn.Module):
         out = self.layer2(out)
         out = self.layer3(out)
         out = self.layer4(out)
-        out = nn.functional.avg_pool2d(out, 4)
-        out = out.view(out.size(0), -1)
+        # 使用全局平均池化确保输出是1x1
+        out = nn.functional.adaptive_avg_pool2d(out, (1, 1))
+        # 使用torch.flatten替代view，对FX图转换更友好
+        out = torch.flatten(out, 1)
         out = self.linear(out)
         return out
 

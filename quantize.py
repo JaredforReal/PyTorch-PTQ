@@ -5,12 +5,30 @@ quantize.py
 """
 import copy
 import torch
+import torchao.quantization.pt2e as pt2e
 from torch.ao.quantization import get_default_qconfig, prepare, convert
 from torch.ao.quantization.quantize_fx import prepare_fx, convert_fx
 
-from dataloader import calibrate_model, create_calibration_loader, get_calibration_dataset, get_dataloader
+from dataloader import create_calibration_loader, get_calibration_dataset, get_dataloader
 from utils import save_model, compare_model_sizes, load_model, load_quantizable_model, timed
 from evaluate import evaluate_model
+
+def calibrate_model(model, data_loader, num_batches=10):
+    """
+    校准函数：在校准数据上运行模型以收集统计信息
+    
+    Args:
+        model: 准备好的模型（包含观察器）
+        data_loader: 校准数据加载器
+        num_batches: 用于校准的批次数量
+    """
+
+    pt2e.move_exported_model_to_eval(model)
+    with torch.no_grad():
+        for batch_idx, (data, _) in enumerate(data_loader):
+            model(data)
+            if batch_idx >= num_batches - 1:
+                break
 
 def dynamic_quantize_model(model):
     """
@@ -71,16 +89,16 @@ def static_quantize_model_eager(model, calibration_loader, backend='x86'):
     
     # 4. 准备模型（插入观察器）
     model_prepared = prepare(model_fused)
-    print("✓ 模型准备完成，观察器已插入")
+    print("模型准备完成，观察器已插入")
     
     # 5. 校准阶段
     print("开始校准...")
     calibrate_model(model_prepared, calibration_loader, num_batches=10)  # 明确指定批次数
-    print("✓ 校准完成")
+    print("校准完成")
     
     # 6. 转换为量化模型
     model_quantized = convert(model_prepared)
-    print("✓ 模型量化完成")
+    print("模型量化完成")
     
     return model_quantized
 
@@ -109,72 +127,63 @@ def static_quantize_model_fx(model, calibration_loader, backend='x86'):
     
     # 准备模型
     model_prepared = prepare_fx(model, qconfig_dict, example_inputs)
-    print("✓ FX模式：模型准备完成")
+    print("FX模式:模型准备完成")
     
     # 校准
     print("开始FX校准...")
     calibrate_model(model_prepared, calibration_loader, num_batches=10)  # 明确指定批次数
-    print("✓ FX校准完成")
+    print("FX校准完成")
     
     # 转换
     model_quantized = convert_fx(model_prepared)
-    print("✓ FX模式：模型量化完成")
+    print("FX模式:模型量化完成")
     
     return model_quantized
 
-if __name__ == '__main__':
-    print("=== PyTorch模型量化示例 ===")
+def quantize_and_evaluate(model, quantize_func, testloader, calibration_loader=None, backend='x86'):
+    """
+    对模型进行量化并评估其性能。
+    """
+    quantized_model = quantize_func(model, calibration_loader, backend) if calibration_loader else quantize_func(model)
+
+    # 评估量化模型
+    timed(evaluate_model)(quantized_model, testloader)
     
+    save_model(quantized_model, f"{model.__class__.__name__.lower()}_quantized.pth")
+
+    compare_model_sizes(model, quantized_model)
+
+if __name__ == '__main__':
+    # 获取测试数据
     _, testloader = get_dataloader()
 
     # 1. 动态量化示例
     print("\n1. 动态量化:")
     float_model = load_model()
-    dynamic_quantized_model = dynamic_quantize_model(float_model)
-    timed(evaluate_model)(dynamic_quantized_model, testloader)
-    save_model(dynamic_quantized_model, "resnet18_cifar10_dynamic_quantized.pth")
-    compare_model_sizes(float_model, dynamic_quantized_model)
+    quantize_and_evaluate(float_model, dynamic_quantize_model, testloader)
     
     # 2. 静态量化示例（需要校准数据）
     print("\n2. 静态量化:")
-    try:
-        # 尝试加载可量化模型
-        quantizable_model = load_quantizable_model()
-        
-        # 创建真实的校准数据（从CIFAR-10训练集，无数据增强）
-        print("创建校准数据...")
-        calibration_dataset = get_calibration_dataset()
-        
-        # 创建校准数据加载器（使用训练数据的子集）
-        calibration_loader = create_calibration_loader(
-            calibration_dataset, 
-            batch_size=32, 
-            num_samples=1000  # 从训练集的50,000个样本中选择1000个进行校准
-        )
-        
-        # 执行静态量化
-        print("eager mode:")
-        eager_static_quantized_model = static_quantize_model_eager(quantizable_model, calibration_loader)
-        timed(evaluate_model)(eager_static_quantized_model, testloader)
-
-        save_model(eager_static_quantized_model, "resnet18_cifar10_static_quantized_eager.pth")
-        
-        # 比较模型大小
-        print("\n模型大小比较:")
-        compare_model_sizes(quantizable_model, eager_static_quantized_model)
-        
-        # fx graph mode
-        print("fx graph mode:")
-        fx_static_quantized_model = static_quantize_model_fx(quantizable_model, calibration_loader)
-        timed(evaluate_model)(fx_static_quantized_model, testloader)
-        save_model(fx_static_quantized_model, "resnet18_cifar10_static_quantized_fx.pth")
-        
-        # 比较模型大小
-        print("\n模型大小比较:")
-        compare_model_sizes(quantizable_model, fx_static_quantized_model)
-
-    except Exception as e:
-        print(f"静态量化失败: {e}")
-        print("请确保已训练可量化模型")
+    # 尝试加载可量化模型
+    quantizable_model = load_quantizable_model()
+    
+    # 创建真实的校准数据（从CIFAR-10训练集，无数据增强）
+    print("创建校准数据...")
+    calibration_dataset = get_calibration_dataset()
+    
+    # 创建校准数据加载器（使用训练数据的子集）
+    calibration_loader = create_calibration_loader(
+        calibration_dataset, 
+        batch_size=32, 
+        num_samples=1000  # 从训练集的50,000个样本中选择1000个进行校准
+    )
+    
+    # eager mode
+    print("eager mode:")
+    quantize_and_evaluate(quantizable_model, static_quantize_model_eager, testloader, calibration_loader)
+    
+    # fx graph mode
+    print("fx graph mode:")
+    quantize_and_evaluate(quantizable_model, static_quantize_model_fx, testloader, calibration_loader)
     
     print("\n=== 量化完成 ===")
